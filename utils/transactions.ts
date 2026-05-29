@@ -1,17 +1,14 @@
+import { db, ensureSignedInUser, isFirebaseConfigured } from "@/utils/firebase";
 import {
-    db,
-    ensureAnonymousUser,
-    isFirebaseConfigured,
-} from "@/utils/firebase";
-import {
-    Timestamp,
-    addDoc,
-    collection,
-    limit,
-    onSnapshot,
-    orderBy,
-    query,
-    serverTimestamp,
+  DocumentData,
+  QueryDocumentSnapshot,
+  QuerySnapshot,
+  Timestamp,
+  addDoc,
+  collection,
+  onSnapshot,
+  query,
+  serverTimestamp,
 } from "firebase/firestore";
 
 export type TransactionType = "income" | "expense";
@@ -37,10 +34,17 @@ function userTransactionsCollection(userId: string) {
   return collection(db, "users", userId, "transactions");
 }
 
-function toDate(value: unknown): Date {
-  if (value instanceof Date) return value;
-  if (value instanceof Timestamp) return value.toDate();
-  return new Date();
+function isTimestamp(value: unknown): value is Timestamp {
+  return value instanceof Timestamp;
+}
+
+function getTransactionDate(raw: Record<string, unknown>) {
+  if (raw.date instanceof Date) return raw.date;
+  if (isTimestamp(raw.date)) return raw.date.toDate();
+  if (raw.createdAt instanceof Date) return raw.createdAt;
+  if (isTimestamp(raw.createdAt)) return raw.createdAt.toDate();
+
+  return new Date(0);
 }
 
 export function subscribeRecentTransactions(
@@ -59,34 +63,33 @@ export function subscribeRecentTransactions(
   let unsubscribeSnapshot: () => void = () => {};
   let cancelled = false;
 
-  ensureAnonymousUser()
+  ensureSignedInUser()
     .then((uid) => {
       if (cancelled) return;
 
-      const q = query(
-        userTransactionsCollection(uid),
-        orderBy("date", "desc"),
-        limit(50),
-      );
+      const q = query(userTransactionsCollection(uid));
 
       unsubscribeSnapshot = onSnapshot(
         q,
-        (snapshot) => {
-          const items = snapshot.docs.map((doc) => {
-            const raw = doc.data() as Record<string, unknown>;
-            return {
-              id: doc.id,
-              type: (raw.type as TransactionType) || "expense",
-              amount: Number(raw.amount || 0),
-              category: String(raw.category || "Other"),
-              note: String(raw.note || ""),
-              date: toDate(raw.date),
-            };
-          });
+        (snapshot: QuerySnapshot<DocumentData>) => {
+          const items = snapshot.docs
+            .map((doc: QueryDocumentSnapshot<DocumentData>) => {
+              const raw = doc.data() as Record<string, unknown>;
+              return {
+                id: doc.id,
+                type: (raw.type as TransactionType) || "expense",
+                amount: Number(raw.amount || 0),
+                category: String(raw.category || "Other"),
+                note: String(raw.note || ""),
+                date: getTransactionDate(raw),
+              };
+            })
+            .sort((left, right) => right.date.getTime() - left.date.getTime())
+            .slice(0, 50);
 
           onData(items);
         },
-        (error) => {
+        (error: Error) => {
           onError(error as Error);
         },
       );
@@ -108,7 +111,7 @@ export async function createTransaction(payload: TransactionPayload) {
     );
   }
 
-  const uid = await ensureAnonymousUser();
+  const uid = await ensureSignedInUser();
 
   await addDoc(userTransactionsCollection(uid), {
     ...payload,

@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously } from "firebase/auth";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -24,17 +24,39 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-export async function ensureAnonymousUser() {
+function waitForAuthUser() {
+  return new Promise<string | null>((resolve, reject) => {
+    if (auth.currentUser?.uid) {
+      resolve(auth.currentUser.uid);
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (user) => {
+        unsubscribe();
+        resolve(user?.uid ?? null);
+      },
+      (error) => {
+        unsubscribe();
+        reject(error);
+      },
+    );
+  });
+}
+
+export async function ensureSignedInUser() {
   if (!isFirebaseConfigured) {
     throw new Error(
       "Firebase is not configured. Add EXPO_PUBLIC_FIREBASE_* values.",
     );
   }
 
-  if (auth.currentUser?.uid) {
-    return auth.currentUser.uid;
+  const existingUid = await waitForAuthUser();
+
+  if (existingUid) {
+    return existingUid;
   }
 
-  const credential = await signInAnonymously(auth);
-  return credential.user.uid;
+  throw new Error("Please sign in to continue.");
 }

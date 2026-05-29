@@ -1,26 +1,40 @@
 import { User } from "@/types/firestore";
 import { uploadToCloudinary } from "@/utils/cloudinary";
+import { auth } from "@/utils/firebase";
 import * as ImagePicker from "expo-image-picker";
-import React, { useState } from "react";
+import { useRouter } from "expo-router";
+import { signOut as firebaseSignOut } from "firebase/auth";
+import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 export default function ProfileTab() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>({
-    name: "Test User",
-    email: "test@example.com",
-    avatar: "https://ui-avatars.com/api/?name=Test+User",
+    name: auth.currentUser?.displayName || "Account",
+    email: auth.currentUser?.email || "",
+    avatar: auth.currentUser?.photoURL || "",
   });
 
   const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+
+    setUser({
+      name: currentUser?.displayName || "Account",
+      email: currentUser?.email || "",
+      avatar: currentUser?.photoURL || "",
+    });
+  }, []);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -43,8 +57,9 @@ export default function ProfileTab() {
     }
   };
 
-  const signOut = async () => {
-    Alert.alert("Sign out", "Sign out is disabled in test mode.");
+  const handleSignOut = async () => {
+    await firebaseSignOut(auth);
+    router.replace("/(auth)/login");
   };
 
   return (
@@ -61,12 +76,20 @@ export default function ProfileTab() {
             disabled={uploading}
             style={s.avatarWrapper}
           >
-            <Image
-              source={{
-                uri: user?.avatar || "https://ui-avatars.com/api/?name=User",
-              }}
-              style={s.avatar}
-            />
+            {user?.avatar ? (
+              <Image source={{ uri: user.avatar }} style={s.avatar} />
+            ) : (
+              <View style={[s.avatar, s.avatarFallback]}>
+                <Text style={s.avatarFallbackText}>
+                  {(user?.name || "U")
+                    .split(" ")
+                    .map((part) => part[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()}
+                </Text>
+              </View>
+            )}
             {uploading && (
               <View style={s.avatarOverlay}>
                 <ActivityIndicator color="#fff" />
@@ -117,7 +140,7 @@ export default function ProfileTab() {
 
       {/* SIGN OUT */}
       <View style={s.section}>
-        <TouchableOpacity onPress={signOut} style={s.signOutBtn}>
+        <TouchableOpacity onPress={handleSignOut} style={s.signOutBtn}>
           <Text style={s.signOutText}>Sign Out</Text>
         </TouchableOpacity>
       </View>
@@ -167,6 +190,16 @@ const s = StyleSheet.create({
     borderRadius: 48,
     borderWidth: 4,
     borderColor: "#fff",
+  },
+  avatarFallback: {
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarFallbackText: {
+    color: "#fff",
+    fontSize: 28,
+    fontWeight: "800",
   },
   avatarOverlay: {
     position: "absolute",

@@ -1,13 +1,35 @@
 import { Tabs } from "expo-router";
-import React from "react";
+import React, { useEffect, useState } from "react";
 
 import { HapticTab } from "@/components/haptic-tab";
 import { IconSymbol } from "@/components/ui/icon-symbol";
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { auth } from "@/utils/firebase";
+import { Redirect } from "expo-router";
+import { onAuthStateChanged } from "firebase/auth";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
+  const [ready, setReady] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setSignedIn(Boolean(user));
+      setReady(true);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  if (!ready) {
+    return null;
+  }
+
+  if (!signedIn) {
+    return <Redirect href="/(auth)/login" />;
+  }
 
   return (
     <Tabs
