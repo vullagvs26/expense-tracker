@@ -31,6 +31,12 @@ interface TransactionPayload {
 }
 
 function userTransactionsCollection(userId: string) {
+  if (!db) {
+    throw new Error(
+      "Firebase is not configured. Add EXPO_PUBLIC_FIREBASE_* values.",
+    );
+  }
+
   return collection(db, "users", userId, "transactions");
 }
 

@@ -8,6 +8,12 @@ export default function AuthLayout() {
   const [signedIn, setSignedIn] = useState(false);
 
   useEffect(() => {
+    if (!auth) {
+      setSignedIn(false);
+      setReady(true);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setSignedIn(Boolean(user));
       setReady(true);

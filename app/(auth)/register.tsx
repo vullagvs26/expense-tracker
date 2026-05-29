@@ -23,6 +23,14 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
+    if (!auth) {
+      Alert.alert(
+        "Registration failed",
+        "Firebase is not configured for this build.",
+      );
+      return;
+    }
+
     if (!email.trim() || !password) {
       Alert.alert("Missing info", "Enter your email and password.");
       return;

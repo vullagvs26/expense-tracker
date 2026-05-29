@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { Auth, getAuth, onAuthStateChanged } from "firebase/auth";
+import { Firestore, getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -20,12 +20,20 @@ export const isFirebaseConfigured = Boolean(
   firebaseConfig.appId,
 );
 
-export const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const firebaseConfigError =
+  "Firebase is not configured for this build. Add EXPO_PUBLIC_FIREBASE_* values in EAS environment variables and rebuild.";
+
+export const app = isFirebaseConfigured ? initializeApp(firebaseConfig) : null;
+export const auth: Auth | null = app ? getAuth(app) : null;
+export const db: Firestore | null = app ? getFirestore(app) : null;
 
 function waitForAuthUser() {
   return new Promise<string | null>((resolve, reject) => {
+    if (!auth) {
+      resolve(null);
+      return;
+    }
+
     if (auth.currentUser?.uid) {
       resolve(auth.currentUser.uid);
       return;
@@ -46,10 +54,8 @@ function waitForAuthUser() {
 }
 
 export async function ensureSignedInUser() {
-  if (!isFirebaseConfigured) {
-    throw new Error(
-      "Firebase is not configured. Add EXPO_PUBLIC_FIREBASE_* values.",
-    );
+  if (!isFirebaseConfigured || !auth) {
+    throw new Error(firebaseConfigError);
   }
 
   const existingUid = await waitForAuthUser();
