@@ -1,8 +1,14 @@
 import { Colors } from "@/constants/theme";
 import { useColorScheme } from "@/hooks/use-color-scheme";
-import { Ionicons, MaterialIcons } from "@expo/vector-icons";
-import React from "react";
 import {
+  AppTransaction,
+  subscribeRecentTransactions,
+} from "@/utils/transactions";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
   FlatList,
   StyleSheet,
   Text,
@@ -10,99 +16,110 @@ import {
   View,
 } from "react-native";
 
-const USER_NAME = "Syed Noman";
-const TOTAL_BALANCE = 504.0;
-const INCOME = 2429.0;
-const EXPENSE = 1925.0;
+const USER_NAME = process.env.EXPO_PUBLIC_USER_NAME || "Demo User";
 
-const TRANSACTIONS = [
-  {
-    id: "1",
-    type: "income",
-    category: "Income",
-    note: "completed a project",
-    amount: 50,
-    date: "11 Dec",
-    icon: "attach-money",
-    color: "#22c55e",
-  },
-  {
-    id: "2",
-    type: "expense",
-    category: "Entertainment",
-    note: "watched a movie",
-    amount: 30,
-    date: "11 Dec",
-    icon: "movie",
-    color: "#3b82f6",
-  },
-  {
-    id: "3",
-    type: "expense",
-    category: "Health",
-    note: "checkup fee",
-    amount: 25,
-    date: "11 Dec",
-    icon: "favorite",
-    color: "#ef4444",
-  },
-  {
-    id: "4",
-    type: "income",
-    category: "Income",
-    note: "gift from Family",
-    amount: 60,
-    date: "10 Dec",
-    icon: "attach-money",
-    color: "#22c55e",
-  },
-  {
-    id: "5",
-    type: "expense",
-    category: "Clothing",
-    note: "Winter Clothing",
-    amount: 40,
-    date: "9 Dec",
-    icon: "checkroom",
-    color: "#8b5cf6",
-  },
-];
+const CATEGORY_STYLES: Record<string, { icon: string; color: string }> = {
+  income: { icon: "attach-money", color: "#22c55e" },
+  entertainment: { icon: "movie", color: "#3b82f6" },
+  health: { icon: "favorite", color: "#ef4444" },
+  clothing: { icon: "checkroom", color: "#8b5cf6" },
+  transport: { icon: "directions-car", color: "#0ea5e9" },
+  food: { icon: "restaurant", color: "#f97316" },
+  shopping: { icon: "shopping-bag", color: "#ec4899" },
+  bills: { icon: "receipt", color: "#eab308" },
+  other: { icon: "category", color: "#6b7280" },
+};
+
+function getCategoryStyle(category: string, type: "income" | "expense") {
+  if (type === "income") return CATEGORY_STYLES.income;
+
+  return CATEGORY_STYLES[category.toLowerCase()] || CATEGORY_STYLES.other;
+}
+
+function formatDate(date: Date) {
+  return date.toLocaleDateString("en-US", { day: "2-digit", month: "short" });
+}
 
 export default function HomeScreen() {
   const colorScheme = useColorScheme() ?? "light";
   const theme = Colors[colorScheme];
+  const router = useRouter();
 
-  const renderTransaction = ({ item }: any) => (
-    <View
-      style={[
-        styles.txnCard,
-        { backgroundColor: colorScheme === "dark" ? "#23272e" : "#fff" },
-      ]}
-    >
+  const [transactions, setTransactions] = useState<AppTransaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeRecentTransactions(
+      (items) => {
+        setTransactions(items);
+        setError(null);
+        setLoading(false);
+      },
+      (subscriptionError) => {
+        setError(subscriptionError.message);
+        setLoading(false);
+      },
+    );
+
+    return unsubscribe;
+  }, []);
+
+  const { income, expense, totalBalance } = useMemo(() => {
+    const incomeTotal = transactions
+      .filter((item) => item.type === "income")
+      .reduce((sum, item) => sum + item.amount, 0);
+
+    const expenseTotal = transactions
+      .filter((item) => item.type === "expense")
+      .reduce((sum, item) => sum + item.amount, 0);
+
+    return {
+      income: incomeTotal,
+      expense: expenseTotal,
+      totalBalance: incomeTotal - expenseTotal,
+    };
+  }, [transactions]);
+
+  const renderTransaction = ({ item }: { item: AppTransaction }) => {
+    const style = getCategoryStyle(item.category, item.type);
+
+    return (
       <View
-        style={[styles.txnIconWrap, { backgroundColor: item.color + "22" }]}
+        style={[
+          styles.txnCard,
+          { backgroundColor: colorScheme === "dark" ? "#23272e" : "#fff" },
+        ]}
       >
-        <MaterialIcons name={item.icon as any} size={28} color={item.color} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.txnCategory, { color: theme.text }]}>
-          {item.category}
-        </Text>
-        <Text style={styles.txnNote}>{item.note}</Text>
-      </View>
-      <View style={{ alignItems: "flex-end" }}>
-        <Text
-          style={[
-            styles.txnAmount,
-            { color: item.type === "income" ? "#22c55e" : "#ef4444" },
-          ]}
+        <View
+          style={[styles.txnIconWrap, { backgroundColor: style.color + "22" }]}
         >
-          {item.type === "income" ? "+" : "-"}${item.amount}
-        </Text>
-        <Text style={styles.txnDate}>{item.date}</Text>
+          <MaterialIcons
+            name={style.icon as any}
+            size={28}
+            color={style.color}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.txnCategory, { color: theme.text }]}>
+            {item.category}
+          </Text>
+          <Text style={styles.txnNote}>{item.note || "No note"}</Text>
+        </View>
+        <View style={{ alignItems: "flex-end" }}>
+          <Text
+            style={[
+              styles.txnAmount,
+              { color: item.type === "income" ? "#22c55e" : "#ef4444" },
+            ]}
+          >
+            {item.type === "income" ? "+" : "-"}${item.amount.toFixed(2)}
+          </Text>
+          <Text style={styles.txnDate}>{formatDate(item.date)}</Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
@@ -128,16 +145,20 @@ export default function HomeScreen() {
       >
         <Text style={styles.balanceLabel}>Total Balance</Text>
         <Text style={styles.balanceValue}>
-          ${TOTAL_BALANCE.toLocaleString()}
+          ${totalBalance.toLocaleString("en-US", { minimumFractionDigits: 2 })}
         </Text>
         <View style={styles.balanceRow}>
           <View style={styles.balanceCol}>
             <Text style={styles.incomeLabel}>Income</Text>
-            <Text style={styles.incomeValue}>${INCOME.toLocaleString()}</Text>
+            <Text style={styles.incomeValue}>
+              ${income.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+            </Text>
           </View>
           <View style={styles.balanceCol}>
             <Text style={styles.expenseLabel}>Expense</Text>
-            <Text style={styles.expenseValue}>${EXPENSE.toLocaleString()}</Text>
+            <Text style={styles.expenseValue}>
+              ${expense.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+            </Text>
           </View>
         </View>
       </View>
@@ -146,16 +167,33 @@ export default function HomeScreen() {
       <Text style={[styles.sectionTitle, { color: theme.text }]}>
         Recent Transactions
       </Text>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {loading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color="#22c55e" size="small" />
+          <Text style={styles.loadingText}>Loading transactions...</Text>
+        </View>
+      ) : null}
       <FlatList
-        data={TRANSACTIONS}
+        data={transactions}
         keyExtractor={(item) => item.id}
         renderItem={renderTransaction}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          !loading ? (
+            <Text style={styles.emptyText}>
+              No transactions yet. Tap + to add your first record.
+            </Text>
+          ) : null
+        }
       />
 
       {/* Floating Add Button */}
-      <TouchableOpacity style={styles.fab}>
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push("/transaction-modal")}
+      >
         <Ionicons name="add" size={32} color="#fff" />
       </TouchableOpacity>
     </View>
@@ -276,6 +314,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#9ca3af",
     textAlign: "right",
+  },
+  loadingWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  loadingText: {
+    color: "#6b7280",
+    marginTop: 6,
+    fontSize: 12,
+  },
+  errorText: {
+    color: "#ef4444",
+    marginHorizontal: 16,
+    marginBottom: 8,
+    fontSize: 12,
+  },
+  emptyText: {
+    color: "#6b7280",
+    textAlign: "center",
+    marginTop: 12,
+    fontSize: 13,
   },
   fab: {
     position: "absolute",
